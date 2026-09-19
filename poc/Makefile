@@ -16,7 +16,7 @@ setup:
 	@echo "OK: $(VENV) 就绪"
 
 image:
-	docker build -t cloudide-sandbox-py:latest -f docker/sandbox-py.Dockerfile .
+	docker build -t codeless-sandbox-py:latest -f docker/sandbox-py.Dockerfile .
 
 run:
 	@test -n "$(REQ)" || (echo 'usage: make run REQ="需求描述"' >&2; exit 2)
@@ -24,4 +24,4 @@ run:
 
 clean:
 	rm -rf workspaces/*
-	@docker ps -aq --filter "name=cloudide-task-" | while read -r id; do docker rm -f "$$id"; done
+	@docker ps -aq --filter "name=codeless-task-" | while read -r id; do docker rm -f "$$id"; done

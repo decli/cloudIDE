@@ -1,4 +1,4 @@
-# cloudIDE POC
+# codeless POC
 
 浏览器里写一句需求 → 大模型在容器里写代码、跑测试 → CI 构建部署 → 点开链接就是做好的网站。
 
@@ -22,7 +22,7 @@ sh infra/setup.sh       # 拉起全部服务，大约两三分钟
 | <http://localhost:8000> | Web 界面：提需求、看进度、继续迭代 |
 | `http://<项目名>.localhost:8081/` | 做好的站点，每个项目一个子域名 |
 | <http://localhost:8081> | 所有已部署站点的列表 |
-| <http://localhost:3000> | Gitea，看代码和 CI 记录，账号 `cloudide` / `cloudide-poc-2026`（只读不用登录） |
+| <http://localhost:3000> | Gitea，看代码和 CI 记录，账号 `codeless` / `codeless-poc-2026`（只读不用登录） |
 
 站点用子域名而不是子目录，是因为验收测试里站点跑在服务器根目录；放进子目录会让绝对路径链接全部 404，测试却是绿的。让两边环境一致才不会漏。
 
@@ -33,12 +33,12 @@ sh infra/setup.sh       # 拉起全部服务，大约两三分钟
 | 服务 | 镜像 | 作用 |
 |---|---|---|
 | `web` | 自建 | Web 界面 + 编排服务，通过宿主机 docker socket 起沙箱 |
-| 沙箱 | `cloudide-sandbox-py` | 每个任务一个，断网，agent 在里面写码跑测试，用完即毁 |
+| 沙箱 | `codeless-sandbox-py` | 每个任务一个，断网，agent 在里面写码跑测试，用完即毁 |
 | `gitea` | `gitea/gitea` | 代码托管，触发 CI |
 | `runner` | `gitea/act_runner` | 跑 Gitea Actions，复用本地沙箱镜像，不拉外网镜像 |
 | `pages` | `nginx:alpine` | 托管 CI 部署出来的站点 |
 
-CI 和 nginx 共用一个 docker 卷 `cloudide_sites`，CI 把 `dist/` 拷进去，nginx 立刻就能访问到。
+CI 和 nginx 共用一个 docker 卷 `codeless_sites`，CI 把 `dist/` 拷进去，nginx 立刻就能访问到。
 
 ## 一次任务发生了什么
 
@@ -100,9 +100,9 @@ CI 和 nginx 共用一个 docker 卷 `cloudide_sites`，CI 把 `dist/` 拷进去
 
 ## 已知问题
 
-- 验收测试由模型生成，可能本身写错或写得过严，这时 agent 会一直修不过去——这正是要观察的失败模式，`.cloudide/task.json` 里有记录。
+- 验收测试由模型生成，可能本身写错或写得过严，这时 agent 会一直修不过去——这正是要观察的失败模式，`.codeless/task.json` 里有记录。
 - 沙箱断网意味着站点不能用 CDN 上的字体、框架、图片，只能自己写样式。要支持第三方依赖，得给沙箱配带白名单的包管理代理。
 - 没有需求澄清环节，需求直接进了测试生成。模糊需求会直接变成错误的验收标准。
 - 迭代时新验收测试和老验收测试可能互相矛盾（比如改了页面标题），这时会一直修不过去，只能新建项目。
-- 项目状态存在各自工作区的 `.cloudide/project.json` 里，服务重启会重新加载；删掉工作区项目就没了。
+- 项目状态存在各自工作区的 `.codeless/project.json` 里，服务重启会重新加载；删掉工作区项目就没了。
 - CI 检出用的是默认分支最新提交，不是精确 commit；单人本地够用。

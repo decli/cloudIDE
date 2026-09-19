@@ -19,7 +19,7 @@ from .ui import Ui
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="cloudide-agent", description="用一句话需求做出一个网站或命令行工具，并自测通过"
+        prog="codeless-agent", description="用一句话需求做出一个网站或命令行工具，并自测通过"
     )
     parser.add_argument("requirement", help="需求描述，比如：帮我做一个简单的个人博客")
     parser.add_argument("--name", help="项目名，默认从需求生成")

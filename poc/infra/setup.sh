@@ -5,8 +5,8 @@ set -e
 cd "$(dirname "$0")"
 
 POC_DIR=$(cd .. && pwd)
-PASSWORD="${GITEA_PASSWORD:-cloudide-poc-2026}"
-USERNAME="${GITEA_USER:-cloudide}"
+PASSWORD="${GITEA_PASSWORD:-codeless-poc-2026}"
+USERNAME="${GITEA_USER:-codeless}"
 
 if [ ! -f ../.env ]; then
   echo "缺少 ../.env，先 cp .env.example .env 并填入 LLM_API_KEY" >&2
@@ -18,7 +18,7 @@ get() { grep -E "^$1=" ../.env | head -1 | cut -d= -f2- ; }
 mkdir -p gitea-data runner-data ../workspaces
 
 echo "==> 构建沙箱镜像"
-docker build -q -t cloudide-sandbox-py:latest -f ../docker/sandbox-py.Dockerfile .. >/dev/null
+docker build -q -t codeless-sandbox-py:latest -f ../docker/sandbox-py.Dockerfile .. >/dev/null
 
 echo "==> 启动 Gitea"
 docker compose up -d gitea
@@ -33,7 +33,7 @@ done
 echo "==> 创建管理员 $USERNAME（已存在则跳过）"
 docker compose exec -T -u git gitea gitea admin user create \
   --admin --username "$USERNAME" --password "$PASSWORD" \
-  --email "$USERNAME@cloudide.local" --must-change-password=false 2>/dev/null \
+  --email "$USERNAME@codeless.local" --must-change-password=false 2>/dev/null \
   || echo "    用户已存在，跳过"
 
 echo "==> 生成凭证"
@@ -91,7 +91,7 @@ docker compose up -d --build web
 echo
 echo "完成："
 echo "  Web 界面   http://localhost:8000"
-echo "  站点入口   http://localhost:8080"
+echo "  站点入口   http://localhost:8081"
 echo "  Gitea      http://localhost:3000   $USERNAME / $PASSWORD"
 echo
 echo "看日志：docker compose -f infra/docker-compose.yml logs -f web"

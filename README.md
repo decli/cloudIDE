@@ -1,4 +1,4 @@
-# cloudIDE
+# codeless
 
 用户在网页上描述需求，平台在隔离沙箱里调用大模型完成编码、测试和修复，推送到 GitHub / GitLab，再由 CI/CD 产出制品或发布到 Pages。用户全程不需要打开 IDE。
 

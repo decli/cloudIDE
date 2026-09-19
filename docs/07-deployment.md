@@ -1,6 +1,6 @@
 # 接入与启动指南
 
-把 cloudIDE 在一台机器上跑起来，接上你自己的大模型，然后用一句话做出一个能访问的网站。
+把 codeless 在一台机器上跑起来，接上你自己的大模型，然后用一句话做出一个能访问的网站。
 
 全程在本机容器里，不依赖任何云服务（除了模型 API）。
 
@@ -20,8 +20,8 @@ Python 和 Node 不用装，都在容器里。
 ## 2. 五分钟跑起来
 
 ```sh
-git clone https://github.com/decli/cloudIDE.git
-cd cloudIDE/poc
+git clone https://github.com/decli/codeless.git
+cd codeless/poc
 cp .env.example .env
 ```
 
@@ -43,7 +43,7 @@ sh infra/setup.sh
 完成：
   Web 界面   http://localhost:8000
   站点入口   http://localhost:8081
-  Gitea      http://localhost:3000   cloudide / cloudide-poc-2026
+  Gitea      http://localhost:3000   codeless / codeless-poc-2026
 ```
 
 打开 <http://localhost:8000>，写一句需求，点发送。
@@ -52,7 +52,7 @@ sh infra/setup.sh
 
 脚本是幂等的，重复执行不会破坏已有数据。它按顺序做这些事：
 
-1. 构建任务沙箱镜像 `cloudide-sandbox-py`（Python 3.12 + pytest + ruff）。
+1. 构建任务沙箱镜像 `codeless-sandbox-py`（Python 3.12 + pytest + ruff）。
 2. 启动 Gitea，等它就绪。
 3. 创建管理员账号（已存在就跳过），生成两个凭证：给编排服务用的 API token、给 runner 用的注册 token。
 4. 把凭证写进 `infra/.env`（compose 用）和 `poc/.env`（命令行用）。这两个文件都在 `.gitignore` 里。
@@ -72,12 +72,12 @@ docker compose -f infra/docker-compose.yml logs -f web
 
 | 地址 | 服务 | 作用 |
 |---|---|---|
-| <http://localhost:8000> | `cloudide-web` | Web 界面加编排服务，通过宿主机 docker socket 起任务沙箱 |
-| `http://<项目名>.localhost:8081/` | `cloudide-pages` | 做好的站点，每个项目一个子域名 |
+| <http://localhost:8000> | `codeless-web` | Web 界面加编排服务，通过宿主机 docker socket 起任务沙箱 |
+| `http://<项目名>.localhost:8081/` | `codeless-pages` | 做好的站点，每个项目一个子域名 |
 | <http://localhost:8081> | 同上 | 所有已部署站点的列表 |
-| <http://localhost:3000> | `cloudide-gitea` | 代码仓库和 CI 记录，看代码不用登录 |
-| 无端口 | `cloudide-runner` | 跑 Gitea Actions，复用本地沙箱镜像 |
-| 无端口 | `cloudide-task-*` | 任务沙箱，每个任务一个，断网，用完即毁 |
+| <http://localhost:3000> | `codeless-gitea` | 代码仓库和 CI 记录，看代码不用登录 |
+| 无端口 | `codeless-runner` | 跑 Gitea Actions，复用本地沙箱镜像 |
+| 无端口 | `codeless-task-*` | 任务沙箱，每个任务一个，断网，用完即毁 |
 
 站点用子域名而不是子目录，是因为验收测试里站点跑在服务器根目录。放进子目录会让站点里的绝对路径链接全部 404，而测试却是绿的——两边环境必须一致。`*.localhost` 现代浏览器都会解析到 127.0.0.1，不用改 hosts。
 
@@ -235,7 +235,7 @@ printf '#!/bin/sh\ngit diff --cached | grep -qE "sk-[a-zA-Z0-9]{20,}" && { echo 
 **其他风险**
 
 - 编排服务挂载了宿主机的 `/var/run/docker.sock`，等于拥有宿主机 root 权限。这是本地验证的妥协，真上多租户必须换成 microVM 级隔离，见[技术方案](03-architecture.md)第 5.5 节。
-- Gitea 的默认管理员密码 `cloudide-poc-2026` 是明文写在脚本里的。只在本机用没关系，要改就在执行前设环境变量：`GITEA_PASSWORD=你的密码 sh infra/setup.sh`。
+- Gitea 的默认管理员密码 `codeless-poc-2026` 是明文写在脚本里的。只在本机用没关系，要改就在执行前设环境变量：`GITEA_PASSWORD=你的密码 sh infra/setup.sh`。
 - 生成的站点由 nginx 直接托管，没有鉴权，同一局域网内可以访问到。
 
 ## 10. 目录速查

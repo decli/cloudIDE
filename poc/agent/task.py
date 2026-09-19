@@ -68,8 +68,8 @@ def git(workspace: Path, *args: str, check: bool = True) -> subprocess.Completed
     """在工作区执行 git；提交身份显式指定，避免依赖宿主机的全局配置。"""
     cmd = [
         "git", "-C", str(workspace),
-        "-c", "user.name=cloudIDE agent",
-        "-c", "user.email=agent@cloudide.local",
+        "-c", "user.name=codeless agent",
+        "-c", "user.email=agent@codeless.local",
         *args,
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -265,7 +265,7 @@ class Task:
 
         # 沙箱要先起来，验收测试得在里面先跑一遍确认可用，才能锁定
         sandbox = Sandbox(
-            name=f"cloudide-task-{self.slug[:30]}-{datetime.now().strftime('%H%M%S')}",
+            name=f"codeless-task-{self.slug[:30]}-{datetime.now().strftime('%H%M%S')}",
             workspace=self.workspace,
             image=self.settings.sandbox_image,
             mount_source=self.mount_source,
@@ -387,7 +387,7 @@ class Task:
         return result
 
     def write_meta(self, result: TaskResult) -> None:
-        meta_path = self.workspace / ".cloudide"
+        meta_path = self.workspace / ".codeless"
         meta_path.mkdir(exist_ok=True)
         file = meta_path / "task.json"
         history = []

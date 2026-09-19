@@ -1,4 +1,4 @@
-"""cloudIDE POC 的 Web 界面。
+"""codeless POC 的 Web 界面。
 
 像聊天一样：第一句话把项目做出来，后面每一句话在同一个项目上继续改，
 改完重新跑测试、重新部署，站点地址不变。
@@ -26,7 +26,7 @@ from agent.templates import DEFAULT_TEMPLATE, TEMPLATES
 HERE = Path(__file__).resolve().parent
 SETTINGS = Settings.load()
 
-app = FastAPI(title="cloudIDE POC")
+app = FastAPI(title="codeless POC")
 
 
 @dataclass
@@ -78,7 +78,7 @@ def save_project(project: Project) -> None:
     """把项目状态写进它自己的工作区，服务重启后还能接着改。"""
     if not project.workspace:
         return
-    meta = Path(project.workspace) / ".cloudide"
+    meta = Path(project.workspace) / ".codeless"
     meta.mkdir(parents=True, exist_ok=True)
     payload = {
         **project.brief(),
@@ -92,7 +92,7 @@ def save_project(project: Project) -> None:
 
 
 def load_projects() -> None:
-    for path in sorted(SETTINGS.workspaces.glob("*/.cloudide/project.json")):
+    for path in sorted(SETTINGS.workspaces.glob("*/.codeless/project.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

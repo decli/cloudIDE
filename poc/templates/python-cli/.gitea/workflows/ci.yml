@@ -8,7 +8,7 @@ jobs:
   build:
     runs-on: local
     container:
-      image: cloudide-sandbox-py:latest
+      image: codeless-sandbox-py:latest
     env:
       GITEA_INTERNAL_URL: http://gitea:3000
     steps:

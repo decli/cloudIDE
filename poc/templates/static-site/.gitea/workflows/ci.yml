@@ -8,10 +8,10 @@ jobs:
   build-deploy:
     runs-on: local
     container:
-      image: cloudide-sandbox-py:latest
+      image: codeless-sandbox-py:latest
       # 站点目录是个共享卷，nginx 容器挂的是同一个卷，部署完立刻能访问
       volumes:
-        - cloudide_sites:/sites
+        - codeless_sites:/sites
     env:
       GITEA_INTERNAL_URL: http://gitea:3000
     steps:

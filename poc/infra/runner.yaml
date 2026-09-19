@@ -6,16 +6,16 @@ runner:
   timeout: 15m
   # 只提供一个标签 local，直接复用本地构建好的沙箱镜像，CI 不用再拉镜像
   labels:
-    - "local:docker://cloudide-sandbox-py:latest"
+    - "local:docker://codeless-sandbox-py:latest"
 
 cache:
   enabled: false
 
 container:
   # 挂到 compose 的网络上，任务容器才能用 http://gitea:3000 访问 Gitea
-  network: cloudide_default
+  network: codeless_default
   privileged: false
   force_pull: false
   # 只允许挂站点卷，CI 靠它把构建产物交给 nginx
   valid_volumes:
-    - cloudide_sites
+    - codeless_sites

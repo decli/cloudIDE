@@ -39,7 +39,7 @@ class Settings:
     api_key: str = ""
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
-    sandbox_image: str = "cloudide-sandbox-py:latest"
+    sandbox_image: str = "codeless-sandbox-py:latest"
     workspaces: Path = ROOT / "workspaces"
     templates: Path = ROOT / "templates"
     template: str = "static-site"
@@ -57,7 +57,7 @@ class Settings:
     # 本地 Gitea：gitea_url 是服务之间互访的地址，public 是给用户点的
     gitea_url: str = "http://localhost:3000"
     gitea_public_url: str = ""
-    gitea_user: str = "cloudide"
+    gitea_user: str = "codeless"
     gitea_token: str = ""
 
     # 部署好的站点入口

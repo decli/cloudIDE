@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cloudIDE</title>
+<title>codeless</title>
 <style>
 :root {
   --bg: #f7f7f5; --panel: #fff; --line: #e5e4e0; --text: #23252b; --dim: #74747c;
@@ -99,7 +99,7 @@ details.fold > pre { margin: .3rem 0 .5rem 1rem; padding: .6rem; background: #f3
 <body>
 
 <aside>
-  <h1>cloudIDE</h1>
+  <h1>codeless</h1>
   <div class="sub">说一句话，它在容器里写代码、跑测试、部署上线</div>
   <button class="newbtn" id="new">＋ 新建项目</button>
   <div class="list" id="list"></div>
@@ -278,6 +278,7 @@ function follow(id) {
 
 async function openProject(id) {
   current = id;
+  history.replaceState(null, "", "?p=" + id);
   if (es) { es.close(); es = null; }
   clearTimeout(retry);
   const p = await api(`/api/projects/${id}`);
@@ -295,6 +296,7 @@ async function openProject(id) {
 
 function showWelcome() {
   current = null; rendered = 0;
+  history.replaceState(null, "", location.pathname);
   if (es) { es.close(); es = null; }
   clearTimeout(retry);
   setTopbar({});
@@ -356,7 +358,11 @@ $("input").addEventListener("input", function () {
   this.style.height = Math.min(this.scrollHeight, 160) + "px";
 });
 
-loadTemplates().then(showWelcome);
+loadTemplates().then(() => {
+  const id = new URLSearchParams(location.search).get("p");
+  if (id) openProject(id).catch(showWelcome);
+  else showWelcome();
+});
 setInterval(() => { if (!es) loadList(); }, 8000);
 </script>
 </body>

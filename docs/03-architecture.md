@@ -255,7 +255,7 @@ template-spa-pages/
 ├── .github/workflows/
 │   ├── ci.yml             # PR 触发：lint、类型检查、单测、验收测试、构建
 │   └── pages.yml          # main 触发：构建并部署到 Pages
-└── .cloudide/
+└── .codeless/
     └── template.json      # 模板元数据：类型、预览端口、产物目录、发布目标
 ```
 

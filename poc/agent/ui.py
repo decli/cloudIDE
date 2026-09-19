@@ -70,7 +70,7 @@ class Ui:
                 f"[bold]需求[/bold]：{requirement}\n"
                 f"[bold]模型[/bold]：{model}\n"
                 f"[bold]工作区[/bold]：{workspace}",
-                title="cloudIDE POC",
+                title="codeless POC",
                 border_style="cyan",
             )
         )
