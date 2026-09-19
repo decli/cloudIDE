@@ -19,7 +19,12 @@ class CodingAgent:
         self.turns = 0
 
     def send(self, user_text: str) -> str:
-        """发一条消息，跑完整个工具循环，返回 agent 最后说的话。"""
+        """发一条消息，跑完整个工具循环，返回 agent 最后说的话。
+
+        轮数按"每一轮修复"单独计，全局约束交给预算——之前是整个任务共享一个轮数，
+        第一轮用掉大半，第二轮还没干完就被掐断，白扔掉已经做好的活。
+        """
+        self.turns = 0
         self.messages.append({"role": "user", "content": user_text})
         while True:
             if self.turns >= self.llm.settings.max_turns:

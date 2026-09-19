@@ -37,7 +37,18 @@ class TemplateSpec:
 
 SITE_TESTER = """你是测试工程师，把用户需求翻译成对一个静态网站的验收测试。
 
-用 pytest，通过 site 夹具访问构建后的站点：
+用 pytest。**site 是 pytest 夹具，每个测试函数必须把它作为参数接收，不能当全局变量用**：
+
+```python
+def test_homepage_shows_title(site):
+    page = site.get("/")
+    assert page.status == 200
+    assert "博客" in page.text
+```
+
+需要辅助函数时，把 site 显式传进去：`def _all_css(site): ...`，不要在函数外引用 site。
+
+夹具提供的能力：
 - `page = site.get("/")` 返回 Page 对象，`page.status` 是 HTTP 状态码，`page.text` 是 HTML 源码
 - `page.links()` 返回这个页面里的站内链接列表，可以逐个 `site.get` 检查是否 200
 - `site.dist` 是构建产物目录（pathlib.Path），可以断言某个文件存在
@@ -76,8 +87,16 @@ CLI_TESTER = """你是测试工程师，负责把用户需求翻译成可执行�
 
 写 pytest 测试，约束如下：
 - 只用标准库和 pytest，不要 import 被测项目的内部模块，只测命令行的外部行为。
-- 用 conftest 提供的 run_cli 夹具调用：`result = run_cli("--help")` 或 `run_cli("add", "3", stdin="x")`。
-  result 是 subprocess.CompletedProcess，可以断言 result.returncode、result.stdout、result.stderr。
+- **run_cli 是 pytest 夹具，每个测试函数必须把它作为参数接收，不能当全局变量用**：
+
+```python
+def test_help_works(run_cli):
+    result = run_cli("--help")
+    assert result.returncode == 0
+```
+
+  result 是 subprocess.CompletedProcess，可以断言 result.returncode、result.stdout、result.stderr；
+  需要标准输入用 `run_cli("add", stdin="3\\n")`。
 - 需要临时文件就用 pytest 的 tmp_path 夹具。
 - 写 5 到 8 个测试函数，覆盖主要功能、一个边界情况、一个错误处理。
 - 断言要宽容：判断输出里是否包含关键内容，不要写死无关的格式、空格和标点。

@@ -153,7 +153,21 @@ class Task:
         existing = len(list(base.glob("test_*.py")))
         return base / f"test_iteration_{existing + 1}.py"
 
-    def generate_acceptance(self) -> tuple[str, Path]:
+    def tests_runnable(self, sandbox: Sandbox, rel: Path) -> tuple[bool, str]:
+        """确认这份测试本身跑得起来：没有语法错、没有未定义的名字、能被 pytest 收集。"""
+        code, out = sandbox.exec(
+            f"ruff check --isolated --select E9,F821,F811 {rel} "
+            f"&& python -m pytest --collect-only -q {rel}",
+            timeout=120,
+        )
+        return code == 0, out.strip()
+
+    def generate_acceptance(self, sandbox: Sandbox) -> tuple[str, Path]:
+        """生成验收测试，并且在锁定之前先确认它自己跑得起来。
+
+        测试一旦锁定 agent 就改不了。如果这份测试本身有语法错误、或者把夹具当全局变量用，
+        agent 会被困在一个无解的任务里反复烧钱——必须在这一步挡住。
+        """
         if self.mode == "create":
             user = f"用户需求：\n{self.requirement}"
         else:
@@ -163,12 +177,30 @@ class Task:
                 f"用户这次提出的新要求：\n{self.requirement}\n\n"
                 "只针对这次的新要求写 2 到 5 个测试，不要重复已有功能的测试。"
             )
-        msg = self.llm.chat(
-            [{"role": "system", "content": self.spec.tester_system}, {"role": "user", "content": user}]
-        )
-        code = extract_code(msg.content or "")
+        messages = [
+            {"role": "system", "content": self.spec.tester_system},
+            {"role": "user", "content": user},
+        ]
         target = self.acceptance_path()
-        target.write_text(code, encoding="utf-8")
+        rel = target.relative_to(self.workspace)
+        code = ""
+        for attempt in range(1, 4):
+            msg = self.llm.chat(messages)
+            code = extract_code(msg.content or "")
+            target.write_text(code, encoding="utf-8")
+            ok, problem = self.tests_runnable(sandbox, rel)
+            if ok:
+                break
+            self.ui.warn(f"生成的验收测试自己跑不起来，重新生成（第 {attempt} 次）")
+            self.ui.detail(problem[-800:])
+            messages.append({"role": "assistant", "content": msg.content or ""})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "这份测试跑不起来，报错如下。修正后重新输出完整的测试文件：\n"
+                    + problem[-1500:],
+                }
+            )
         git(self.workspace, "add", "-A")
         git(self.workspace, "commit", "-q", "-m", f"test: 生成并锁定验收测试（{target.name}）")
         return code, target
@@ -219,6 +251,9 @@ class Task:
             code, out = sandbox.exec(f"./run.sh {step}", timeout=300)
             results[step] = (code == 0, out.strip())
             self.ui.check(label, code == 0)
+            if code != 0:
+                # 失败原因也要给用户看见，不能只喂回给模型
+                self.ui.detail(out.strip()[-1200:])
         return results
 
     # --- 主流程 ---
@@ -228,11 +263,7 @@ class Task:
         if self.mode == "create":
             self.scaffold()
 
-        self.ui.stage("生成验收测试")
-        tests, test_path = self.generate_acceptance()
-        self.ui.code(tests)
-        self.snapshot_locked()
-
+        # 沙箱要先起来，验收测试得在里面先跑一遍确认可用，才能锁定
         sandbox = Sandbox(
             name=f"cloudide-task-{self.slug[:30]}-{datetime.now().strftime('%H%M%S')}",
             workspace=self.workspace,
@@ -240,6 +271,15 @@ class Task:
             mount_source=self.mount_source,
         ).start()
         self.ui.info(f"沙箱已启动：{sandbox.name}（断网，内存 {sandbox.memory}）")
+
+        self.ui.stage("生成验收测试")
+        try:
+            tests, test_path = self.generate_acceptance(sandbox)
+        except Exception:
+            sandbox.stop()
+            raise
+        self.ui.code(tests)
+        self.snapshot_locked()
 
         toolbox = ToolBox(
             workspace=self.workspace,
@@ -286,7 +326,8 @@ class Task:
                     self.ui.warn(f"检测到新增配置文件，已删除：{', '.join(traps)}")
                     notes.append(
                         f"你新增了 {', '.join(traps)}，这类文件会覆盖锁定的 lint / 测试配置，"
-                        "已被删除。不要通过改配置让检查变绿。"
+                        "已被删除。不要通过改配置让检查变绿。如果你是为了给验收测试补夹具才建它，"
+                        "说明验收测试本身有问题——直接在回复里说清楚卡在哪，不要反复尝试。"
                     )
 
                 self.ui.stage(f"第 {round_no} 轮：验证")
@@ -316,7 +357,20 @@ class Task:
             else:
                 result.blocked = f"修复 {self.settings.max_repair_rounds} 轮后仍未全绿"
         except (BudgetExceeded, TurnLimitExceeded) as exc:
+            # 触达上限不代表活没干完。最后再验一次，全绿就照样算成功、照样发布，
+            # 不然就是白烧了钱又把做好的东西扔掉。
             result.blocked = str(exc)
+            self.ui.warn(f"{exc}，先做最后一次验证")
+            self.restore_tampered()
+            self.sweep_config_traps()
+            checks = self.verify(sandbox)
+            result.checks = {k: v[0] for k, v in checks.items()}
+            if all(result.checks.values()):
+                result.ok = True
+                result.blocked = f"{exc}（但检查已经全绿，按完成处理）"
+            git(self.workspace, "add", "-A", check=False)
+            git(self.workspace, "commit", "-q", "--allow-empty",
+                "-m", f"feat: {self.requirement[:40]}（触达上限时的最终状态）", check=False)
         except KeyboardInterrupt:
             result.blocked = "被用户中断"
         finally:

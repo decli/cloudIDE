@@ -89,6 +89,9 @@ class Ui:
         mark = "[green]✓[/green]" if ok else "[red]✗[/red]"
         self.console.print(f"  {mark} {label}")
 
+    def detail(self, text: str) -> None:
+        self.console.print(text[:1200], markup=False, highlight=False, style="dim")
+
     def code(self, text: str, lang: str = "python") -> None:
         self.console.print(Syntax(text, lang, theme="ansi_dark", word_wrap=True))
 

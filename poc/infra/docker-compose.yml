@@ -28,6 +28,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../workspaces:/app/workspaces
+      # 界面和模板挂进来，改完重启容器即可，不用重建镜像
+      - ../web:/app/web:ro
+      - ../agent:/app/agent:ro
+      - ../templates:/app/templates:ro
     restart: unless-stopped
 
   # 部署好的站点由它对外提供访问

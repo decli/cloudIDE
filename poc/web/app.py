@@ -197,6 +197,10 @@ class WebUi:
     def check(self, label: str, ok: bool) -> None:
         self.p.emit("check", label, ok=ok)
 
+    def detail(self, text: str) -> None:
+        """检查失败的具体输出，用户得能看见到底哪条没过。"""
+        self.p.emit("out", text)
+
     def code(self, text: str, lang: str = "python") -> None:
         self.p.emit("code", text)
 
@@ -232,7 +236,13 @@ def run_project(project: Project, requirement: str) -> None:
         if pub.status == "success":
             project.site_url = pub.site_url or pub.release_url
             project.status = "idle"
-            ui.info("这一轮完成，可以继续提要求")
+            # 结果做成事件，这样刷新或重连时它会跟着历史一起回来
+            project.emit(
+                "result",
+                "这一轮完成，可以继续提要求",
+                site_url=project.site_url,
+                usd=round(project.usd, 4),
+            )
         else:
             project.status = "failed"
             ui.warn(f"CI 状态：{pub.status}")
@@ -296,11 +306,20 @@ def create_project(body: CreateProject) -> dict:
 
 
 @app.get("/api/projects/{project_id}")
-def get_project(project_id: str) -> dict:
+def get_project(project_id: str, limit: int = 600) -> dict:
+    """默认只回最近 600 条事件——一轮下来上千条，全渲染会把浏览器拖垮。"""
     project = PROJECTS.get(project_id)
     if not project:
         raise HTTPException(404, "项目不存在")
-    return {**project.brief(), "events": project.events, "workspace": project.workspace}
+    total = len(project.events)
+    events = project.events[-limit:] if limit and total > limit else project.events
+    return {
+        **project.brief(),
+        "events": events,
+        "total_events": total,
+        "truncated": total > len(events),
+        "workspace": project.workspace,
+    }
 
 
 @app.post("/api/projects/{project_id}/messages")
@@ -320,13 +339,14 @@ def add_message(project_id: str, body: Message) -> dict:
 
 
 @app.get("/api/projects/{project_id}/events")
-async def project_events(project_id: str) -> StreamingResponse:
+async def project_events(project_id: str, after: int = 0) -> StreamingResponse:
+    """after 是客户端已经拿到的事件数，只推它之后的，避免重连时重放整段历史。"""
     project = PROJECTS.get(project_id)
     if not project:
         raise HTTPException(404, "项目不存在")
 
     async def stream():
-        sent = 0
+        sent = min(max(after, 0), len(project.events))
         while True:
             with project.lock:
                 pending = project.events[sent:]
