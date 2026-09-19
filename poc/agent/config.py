@@ -77,12 +77,17 @@ class Settings:
     @classmethod
     def load(cls) -> Settings:
         load_env()
-        key = os.environ.get("DEEPSEEK_API_KEY", "")
+        # LLM_* 是通用名，接别的供应商时用它；DEEPSEEK_* 保留兼容
+        key = os.environ.get("LLM_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
         if not key:
-            raise SystemExit("缺少 DEEPSEEK_API_KEY，请在 poc/.env 里配置（参考 .env.example）")
+            raise SystemExit(
+                "缺少模型 key，请在 poc/.env 里配置 LLM_API_KEY（参考 .env.example）"
+            )
         s = cls(api_key=key)
-        s.base_url = os.environ.get("DEEPSEEK_BASE_URL", s.base_url)
-        s.model = os.environ.get("DEEPSEEK_MODEL", s.model)
+        s.base_url = (
+            os.environ.get("LLM_BASE_URL") or os.environ.get("DEEPSEEK_BASE_URL") or s.base_url
+        )
+        s.model = os.environ.get("LLM_MODEL") or os.environ.get("DEEPSEEK_MODEL") or s.model
         s.gitea_url = os.environ.get("GITEA_URL", s.gitea_url).rstrip("/")
         s.gitea_public_url = os.environ.get("GITEA_PUBLIC_URL", s.gitea_url).rstrip("/")
         s.gitea_user = os.environ.get("GITEA_USER", s.gitea_user)

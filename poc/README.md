@@ -4,12 +4,14 @@
 
 全程跑在本机容器里，用户不需要打开 IDE，也不用碰命令行。
 
+完整的接入与启动说明（前置条件、换模型、排查、清理、安全）见[接入与启动指南](../docs/07-deployment.md)，下面是最短路径。
+
 ## 启动
 
-需要 Docker Desktop 和一个 DeepSeek API key。
+需要 Docker Desktop 和一个模型 API key（默认 DeepSeek，也可以换成任何 OpenAI 兼容服务）。
 
 ```sh
-cp .env.example .env    # 填入 DEEPSEEK_API_KEY
+cp .env.example .env    # 填入 LLM_API_KEY
 sh infra/setup.sh       # 拉起全部服务，大约两三分钟
 ```
 

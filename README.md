@@ -14,8 +14,21 @@
 | [路线图](docs/04-roadmap.md) | 分阶段计划、退出标准、核心指标 |
 | [决策记录](docs/05-decisions.md) | 提议中的架构决策，以及需要拍板的问题 |
 | [POC 验证结果](docs/06-poc-findings.md) | 实测数据、暴露的问题、和方案的对照 |
+| [接入与启动指南](docs/07-deployment.md) | 前置条件、一键启动、接入自己的模型、排查、清理、安全须知 |
 
-代码：[`poc/`](poc/) 是一个能跑的最小实现——浏览器里写一句需求，大模型在容器里写代码、跑测试，CI 构建部署，点开链接就是做好的网站。怎么用见 [poc/README.md](poc/README.md)。
+## 跑起来
+
+代码在 [`poc/`](poc/)，是一个能跑的最小实现。需要 Docker Desktop 和一个模型 API key（默认 DeepSeek，任何 OpenAI 兼容且支持 function calling 的服务都行）。
+
+```sh
+cd poc && cp .env.example .env    # 填入 LLM_API_KEY
+```
+
+```sh
+sh infra/setup.sh                 # 拉起全部服务，两三分钟
+```
+
+打开 <http://localhost:8000> 写一句需求即可。完整说明见[接入与启动指南](docs/07-deployment.md)。
 
 ## 核心结论
 

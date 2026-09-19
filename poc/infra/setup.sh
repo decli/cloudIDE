@@ -9,7 +9,7 @@ PASSWORD="${GITEA_PASSWORD:-cloudide-poc-2026}"
 USERNAME="${GITEA_USER:-cloudide}"
 
 if [ ! -f ../.env ]; then
-  echo "缺少 ../.env，先 cp .env.example .env 并填入 DEEPSEEK_API_KEY" >&2
+  echo "缺少 ../.env，先 cp .env.example .env 并填入 LLM_API_KEY" >&2
   exit 1
 fi
 
@@ -45,6 +45,9 @@ RUNNER_TOKEN=$(docker compose exec -T -u git gitea gitea actions generate-runner
 
 cat > .env <<EOF
 RUNNER_TOKEN=$RUNNER_TOKEN
+LLM_API_KEY=$(get LLM_API_KEY)
+LLM_BASE_URL=$(get LLM_BASE_URL)
+LLM_MODEL=$(get LLM_MODEL)
 DEEPSEEK_API_KEY=$(get DEEPSEEK_API_KEY)
 DEEPSEEK_BASE_URL=$(get DEEPSEEK_BASE_URL)
 DEEPSEEK_MODEL=$(get DEEPSEEK_MODEL)

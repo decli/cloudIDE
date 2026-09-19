@@ -11,9 +11,13 @@ services:
     depends_on:
       - gitea
     environment:
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-flash}
+      # 模型接入：LLM_* 是通用名，DEEPSEEK_* 保留兼容，空值由 agent/config.py 兜底
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       MAX_USD: ${MAX_USD:-0.50}
       # 服务之间走容器网络，给用户看的链接走 localhost
       GITEA_URL: http://gitea:3000
