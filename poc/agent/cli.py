@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
 
     spec = TEMPLATES[args.template or settings.template]
     ui = Ui(Console(), verbose=args.verbose)
-    task = Task(settings, args.requirement, args.name, ui, template=spec)
+    task = Task(settings, args.requirement, ui, template=spec, name=args.name)
     try:
         result = task.run(keep_sandbox=args.keep_sandbox)
     except DockerUnavailable as exc:

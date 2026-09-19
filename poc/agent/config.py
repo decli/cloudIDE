@@ -63,6 +63,17 @@ class Settings:
     # 部署好的站点入口
     pages_url: str = "http://localhost:8080"
 
+    def site_url(self, name: str) -> str:
+        """每个站点跑在自己的子域名根目录下。
+
+        之前把站点放在 /项目名/ 子目录里，结果生成的绝对路径链接（/about.html）全部 404——
+        验收测试里站点在根目录，线上却在子目录，测试环境和生产环境不一致。
+        """
+        scheme, _, rest = self.pages_url.rpartition("://")
+        scheme = scheme or "http"
+        host, _, port = rest.partition(":")
+        return f"{scheme}://{name}.{host}:{port}/" if port else f"{scheme}://{name}.{host}/"
+
     @classmethod
     def load(cls) -> Settings:
         load_env()

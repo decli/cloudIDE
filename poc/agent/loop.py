@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Callable
-
 from .llm import LLM, assistant_to_dict
 from .tools import TOOL_SCHEMAS, ToolBox
 
@@ -13,17 +11,11 @@ class TurnLimitExceeded(RuntimeError):
 
 
 class CodingAgent:
-    def __init__(
-        self,
-        llm: LLM,
-        toolbox: ToolBox,
-        system: str,
-        on_event: Callable[[str, str], None],
-    ) -> None:
+    def __init__(self, llm: LLM, toolbox: ToolBox, system: str, ui) -> None:
         self.llm = llm
         self.toolbox = toolbox
+        self.ui = ui
         self.messages: list[dict] = [{"role": "system", "content": system}]
-        self.on_event = on_event
         self.turns = 0
 
     def send(self, user_text: str) -> str:
@@ -33,20 +25,18 @@ class CodingAgent:
             if self.turns >= self.llm.settings.max_turns:
                 raise TurnLimitExceeded(f"超过单任务最大轮数 {self.llm.settings.max_turns}")
             self.turns += 1
-            msg = self.llm.chat(self.messages, TOOL_SCHEMAS)
+
+            msg = self.llm.chat(self.messages, TOOL_SCHEMAS, on_delta=self.ui.delta)
+            self.ui.flush()
             self.messages.append(assistant_to_dict(msg))
 
-            calls = getattr(msg, "tool_calls", None)
-            text = (msg.content or "").strip()
-            if text:
-                self.on_event("say", text)
-            if not calls:
-                return text
+            if not msg.tool_calls:
+                return msg.content.strip()
 
-            for call in calls:
-                self.on_event(call.function.name, call.function.arguments)
-                result = self.toolbox.dispatch(call.function.name, call.function.arguments)
-                self.on_event("result", result)
+            for call in msg.tool_calls:
+                self.ui.tool(call.name, call.arguments)
+                result = self.toolbox.dispatch(call.name, call.arguments)
+                self.ui.tool_result(call.name, result)
                 self.messages.append(
                     {"role": "tool", "tool_call_id": call.id, "content": result}
                 )

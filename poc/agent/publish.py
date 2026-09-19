@@ -121,7 +121,7 @@ def publish(
     site_url = release_url = None
     if status == "success":
         if deploy == "site":
-            site_url = f"{settings.pages_url}/{name}/"
+            site_url = settings.site_url(name)
             ui.info(f"站点已上线：{site_url}")
         else:
             release_url = gitea.latest_release_asset(name)

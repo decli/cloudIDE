@@ -1,4 +1,9 @@
-"""一次任务的完整编排：脚手架 → 生成并锁定验收测试 → 编码循环 → 验证 → git 提交。"""
+"""一次任务的完整编排。
+
+两种模式：
+- create：用模板初始化一个新项目
+- iterate：在已有项目上继续改，历史验收测试继续生效，新要求追加新的验收测试
+"""
 
 from __future__ import annotations
 
@@ -22,9 +27,30 @@ from .tools import ToolBox
 # 只锁住已有文件还不够：新增一个优先级更高的配置文件同样能架空锁定配置，
 # 比如 ruff.toml 会盖掉 pyproject.toml，根目录的 conftest.py 能劫持验收测试的夹具。
 CONFIG_TRAPS = {
-    "ruff.toml", ".ruff.toml", "setup.cfg", "tox.ini", "pytest.ini",
-    "conftest.py", ".editorconfig",
+    "ruff.toml", ".ruff.toml", "setup.cfg", "tox.ini", "pytest.ini", ".editorconfig",
+    "conftest.py",
 }
+# conftest.py 放在 tests/unit/ 下只影响它自己的单元测试，是正当用法；
+# 放在根目录或 tests/ 下会一并作用到验收测试，能劫持夹具，必须拦。
+CONFTEST_ALLOWED_PREFIX = "tests/unit/"
+
+ITERATE_MESSAGE = """这是一个已经做好并上线的项目，用户提出了新的要求。
+
+项目此前的需求：
+{history}
+
+本次要求：
+{requirement}
+
+针对本次要求新增的验收测试 {test_path}（只读，不能改）：
+```python
+{tests}
+```
+
+注意：
+- 先用 list_files 和 read_file 看清现有代码再动手，在现有基础上改，不要推倒重来。
+- 以前的验收测试也必须继续通过，别改坏已有功能。
+- 改完跑 ./run.sh lint、./run.sh test、./run.sh acceptance，全绿后总结两三句就停。"""
 
 
 def slugify(text: str, limit: int = 28) -> str:
@@ -74,19 +100,29 @@ class Task:
         self,
         settings: Settings,
         requirement: str,
-        name: str | None,
         ui,
+        *,
         template: TemplateSpec | str | None = None,
+        name: str | None = None,
+        workspace: Path | None = None,
+        history: list[str] | None = None,
     ) -> None:
         self.settings = settings
         self.requirement = requirement.strip()
         self.ui = ui
+        self.history = history or []
         if isinstance(template, str) or template is None:
             template = TEMPLATES[template or settings.template]
         self.spec = template
-        stamp = datetime.now().strftime("%m%d-%H%M%S")
-        self.slug = slugify(name or requirement)
-        self.workspace = settings.workspaces / f"{self.slug}-{stamp}"
+        if workspace is not None:
+            self.mode = "iterate"
+            self.workspace = workspace
+            self.slug = workspace.name
+        else:
+            self.mode = "create"
+            stamp = datetime.now().strftime("%m%d-%H%M%S")
+            self.slug = slugify(name or requirement)
+            self.workspace = settings.workspaces / f"{self.slug}-{stamp}"
         self.llm = LLM(settings)
         self.locked_snapshot: dict[str, tuple[str, bytes]] = {}
         self.initial_files: set[str] = set()
@@ -109,20 +145,33 @@ class Task:
         git(self.workspace, "add", "-A")
         git(self.workspace, "commit", "-q", "-m", "chore: 用模板初始化项目")
 
-    def generate_acceptance(self) -> str:
+    def acceptance_path(self) -> Path:
+        base = self.workspace / "tests" / "acceptance"
+        base.mkdir(parents=True, exist_ok=True)
+        if self.mode == "create":
+            return base / "test_acceptance.py"
+        existing = len(list(base.glob("test_*.py")))
+        return base / f"test_iteration_{existing + 1}.py"
+
+    def generate_acceptance(self) -> tuple[str, Path]:
+        if self.mode == "create":
+            user = f"用户需求：\n{self.requirement}"
+        else:
+            history = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(self.history)) or "（无）"
+            user = (
+                f"这是一个已有项目，此前的需求：\n{history}\n\n"
+                f"用户这次提出的新要求：\n{self.requirement}\n\n"
+                "只针对这次的新要求写 2 到 5 个测试，不要重复已有功能的测试。"
+            )
         msg = self.llm.chat(
-            [
-                {"role": "system", "content": self.spec.tester_system},
-                {"role": "user", "content": f"用户需求：\n{self.requirement}"},
-            ]
+            [{"role": "system", "content": self.spec.tester_system}, {"role": "user", "content": user}]
         )
         code = extract_code(msg.content or "")
-        target = self.workspace / "tests" / "acceptance" / "test_acceptance.py"
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = self.acceptance_path()
         target.write_text(code, encoding="utf-8")
         git(self.workspace, "add", "-A")
-        git(self.workspace, "commit", "-q", "-m", "test: 生成并锁定验收测试")
-        return code
+        git(self.workspace, "commit", "-q", "-m", f"test: 生成并锁定验收测试（{target.name}）")
+        return code, target
 
     def _files(self) -> list[Path]:
         return [
@@ -156,9 +205,12 @@ class Task:
         removed = []
         for path in self._files():
             rel = str(path.relative_to(self.workspace))
-            if path.name in CONFIG_TRAPS and rel not in self.initial_files:
-                path.unlink()
-                removed.append(rel)
+            if rel in self.initial_files or path.name not in CONFIG_TRAPS:
+                continue
+            if path.name == "conftest.py" and rel.startswith(CONFTEST_ALLOWED_PREFIX):
+                continue
+            path.unlink()
+            removed.append(rel)
         return removed
 
     def verify(self, sandbox: Sandbox) -> dict[str, tuple[bool, str]]:
@@ -173,15 +225,16 @@ class Task:
 
     def run(self, keep_sandbox: bool = False) -> TaskResult:
         self.ui.header(self.requirement, self.workspace, self.settings.model)
-        self.scaffold()
+        if self.mode == "create":
+            self.scaffold()
 
         self.ui.stage("生成验收测试")
-        tests = self.generate_acceptance()
+        tests, test_path = self.generate_acceptance()
         self.ui.code(tests)
         self.snapshot_locked()
 
         sandbox = Sandbox(
-            name=f"cloudide-task-{self.slug}-{datetime.now().strftime('%H%M%S')}",
+            name=f"cloudide-task-{self.slug[:30]}-{datetime.now().strftime('%H%M%S')}",
             workspace=self.workspace,
             image=self.settings.sandbox_image,
             mount_source=self.mount_source,
@@ -195,11 +248,24 @@ class Task:
             max_output=self.settings.max_tool_output,
             cmd_timeout=self.settings.cmd_timeout,
         )
-        agent = CodingAgent(self.llm, toolbox, self.spec.coder_system, self.ui.event)
+        agent = CodingAgent(self.llm, toolbox, self.spec.coder_system, self.ui)
 
         result = TaskResult(ok=False, workspace=self.workspace)
         try:
-            message = self.spec.first_message.format(requirement=self.requirement, tests=tests)
+            rel_test = test_path.relative_to(self.workspace)
+            if self.mode == "create":
+                message = self.spec.first_message.format(
+                    requirement=self.requirement, tests=tests
+                )
+            else:
+                history = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(self.history)) or "（无）"
+                message = ITERATE_MESSAGE.format(
+                    history=history,
+                    requirement=self.requirement,
+                    tests=tests,
+                    test_path=rel_test,
+                )
+
             for round_no in range(1, self.settings.max_repair_rounds + 2):
                 result.rounds = round_no
                 self.ui.stage(f"第 {round_no} 轮：编码")
@@ -229,8 +295,9 @@ class Task:
                 git(self.workspace, "add", "-A")
                 git(
                     self.workspace, "commit", "-q", "--allow-empty",
-                    "-m", f"feat: 第 {round_no} 轮实现"
-                          f"（{sum(result.checks.values())}/{len(self.spec.checks)} 通过）",
+                    "-m", f"feat: {self.requirement[:40]}"
+                          f"（第 {round_no} 轮，{sum(result.checks.values())}"
+                          f"/{len(self.spec.checks)} 通过）",
                 )
 
                 if all(result.checks.values()):
@@ -266,22 +333,34 @@ class Task:
         return result
 
     def write_meta(self, result: TaskResult) -> None:
-        meta = {
-            "requirement": self.requirement,
-            "template": self.spec.key,
-            "model": self.settings.model,
-            "rounds": result.rounds,
-            "checks": result.checks,
-            "ok": result.ok,
-            "blocked": result.blocked,
-            "tampered": result.tampered,
-            "removed_configs": result.removed_configs,
-            "usage": result.usage,
-            "usd": result.usd,
-            "finished_at": datetime.now().isoformat(timespec="seconds"),
-        }
         meta_path = self.workspace / ".cloudide"
         meta_path.mkdir(exist_ok=True)
-        (meta_path / "task.json").write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+        file = meta_path / "task.json"
+        history = []
+        if file.exists():
+            try:
+                history = json.loads(file.read_text(encoding="utf-8")).get("runs", [])
+            except json.JSONDecodeError:
+                history = []
+        history.append(
+            {
+                "mode": self.mode,
+                "requirement": self.requirement,
+                "rounds": result.rounds,
+                "checks": result.checks,
+                "ok": result.ok,
+                "blocked": result.blocked,
+                "tampered": result.tampered,
+                "removed_configs": result.removed_configs,
+                "usage": result.usage,
+                "usd": result.usd,
+                "finished_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        )
+        file.write_text(
+            json.dumps(
+                {"template": self.spec.key, "model": self.settings.model, "runs": history},
+                ensure_ascii=False, indent=2,
+            ),
+            encoding="utf-8",
         )
