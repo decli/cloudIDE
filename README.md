@@ -13,6 +13,9 @@
 | [技术方案](docs/03-architecture.md) | 总体架构、核心流程、任务状态机、组件选型、安全设计、模板契约 |
 | [路线图](docs/04-roadmap.md) | 分阶段计划、退出标准、核心指标 |
 | [决策记录](docs/05-decisions.md) | 提议中的架构决策，以及需要拍板的问题 |
+| [POC 验证结果](docs/06-poc-findings.md) | 实测数据、暴露的问题、和方案的对照 |
+
+代码：[`poc/`](poc/) 是一个能跑的最小实现——一句话需求，自动写码、自测、推 Gitea、CI 出制品。怎么用见 [poc/README.md](poc/README.md)。
 
 ## 核心结论
 
@@ -24,4 +27,7 @@
 
 ## 下一步
 
-先回答[决策记录](docs/05-decisions.md)里的 Q-01（目标市场）和 Q-02（首要用户），再启动[路线图](docs/04-roadmap.md)中的 Phase 0 验证。
+技术路线已经用 [`poc/`](poc/) 跑通了（三个任务全绿，单次成本约半分钱，细节见 [POC 验证结果](docs/06-poc-findings.md)）。接下来两件事并行：
+
+1. 回答[决策记录](docs/05-decisions.md)里的 Q-01（目标市场）和 Q-02（首要用户）。
+2. 按 [POC 验证结果](docs/06-poc-findings.md)第 5 节加难度做评测集，测出真实成功率。
