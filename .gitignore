@@ -1,1 +1,17 @@
 .DS_Store
+
+# 密钥：绝不入库
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# POC 运行产物
+poc/workspaces/
+poc/artifacts/
+poc/infra/gitea-data/
+poc/infra/runner-data/

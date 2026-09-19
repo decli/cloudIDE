@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: local
+    container:
+      image: cloudide-sandbox-py:latest
+    env:
+      GITEA_INTERNAL_URL: http://gitea:3000
+    steps:
+      - name: 检出代码
+        run: |
+          git clone --quiet --depth 1 "${GITEA_INTERNAL_URL}/${GITHUB_REPOSITORY}.git" _src
+          cp -a _src/. .
+          rm -rf _src
+      - name: 静态检查
+        run: ./run.sh lint
+      - name: 单元测试
+        run: ./run.sh test
+      - name: 验收测试
+        run: ./run.sh acceptance
+      - name: 构建制品
+        run: ./run.sh build
+      - name: 发布 Release
+        # Gitea 不会把 token 直接放进环境变量，必须在这里显式传进去
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/publish_release.py
