@@ -2,9 +2,9 @@ log:
   level: info
 
 runner:
-  capacity: 1
+  capacity: 2
   timeout: 15m
-  # 只提供一个标签 local，直接复用本地构建好的沙箱镜像，避免 CI 再去拉镜像
+  # 只提供一个标签 local，直接复用本地构建好的沙箱镜像，CI 不用再拉镜像
   labels:
     - "local:docker://cloudide-sandbox-py:latest"
 
@@ -16,4 +16,6 @@ container:
   network: cloudide_default
   privileged: false
   force_pull: false
-  valid_volumes: []
+  # 只允许挂站点卷，CI 靠它把构建产物交给 nginx
+  valid_volumes:
+    - cloudide_sites

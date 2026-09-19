@@ -42,6 +42,10 @@ class Settings:
     sandbox_image: str = "cloudide-sandbox-py:latest"
     workspaces: Path = ROOT / "workspaces"
     templates: Path = ROOT / "templates"
+    template: str = "static-site"
+
+    # 编排服务自己跑在容器里时，创建沙箱要用宿主机上的路径
+    workspaces_host: Path | None = None
 
     # 上限：任何一层循环都必须有边界
     max_turns: int = 40
@@ -50,10 +54,14 @@ class Settings:
     cmd_timeout: int = 120
     max_tool_output: int = 6000
 
-    # 本地 Gitea
+    # 本地 Gitea：gitea_url 是服务之间互访的地址，public 是给用户点的
     gitea_url: str = "http://localhost:3000"
+    gitea_public_url: str = ""
     gitea_user: str = "cloudide"
     gitea_token: str = ""
+
+    # 部署好的站点入口
+    pages_url: str = "http://localhost:8080"
 
     @classmethod
     def load(cls) -> Settings:
@@ -65,8 +73,13 @@ class Settings:
         s.base_url = os.environ.get("DEEPSEEK_BASE_URL", s.base_url)
         s.model = os.environ.get("DEEPSEEK_MODEL", s.model)
         s.gitea_url = os.environ.get("GITEA_URL", s.gitea_url).rstrip("/")
+        s.gitea_public_url = os.environ.get("GITEA_PUBLIC_URL", s.gitea_url).rstrip("/")
         s.gitea_user = os.environ.get("GITEA_USER", s.gitea_user)
         s.gitea_token = os.environ.get("GITEA_TOKEN", s.gitea_token)
+        s.pages_url = os.environ.get("PAGES_URL", s.pages_url).rstrip("/")
+        s.template = os.environ.get("TEMPLATE", s.template)
+        host = os.environ.get("WORKSPACES_HOST_DIR", "").strip()
+        s.workspaces_host = Path(host) if host else None
         s.max_usd = float(os.environ.get("MAX_USD", s.max_usd))
         s.max_turns = int(os.environ.get("MAX_TURNS", s.max_turns))
         s.workspaces.mkdir(parents=True, exist_ok=True)

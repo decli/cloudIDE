@@ -1,6 +1,6 @@
-"""推送到本地 Gitea 并等 CI 结果。
+"""推送到本地 Gitea，触发 CI，等它把站点部署出来。
 
-凭证只在宿主机这一侧使用，推送 URL 一次性拼出来，不写进仓库的 remote 配置。
+凭证只在编排侧使用，推送 URL 一次性拼出来，不写进仓库的 remote 配置。
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ class PublishResult:
     repo_url: str
     actions_url: str
     status: str
+    site_url: str | None = None
     release_url: str | None = None
 
 
@@ -35,10 +36,11 @@ class Gitea:
         if not settings.gitea_token:
             raise GiteaError("缺少 GITEA_TOKEN，请先执行 infra/setup.sh")
         self.base = settings.gitea_url.rstrip("/")
+        self.public = (settings.gitea_public_url or settings.gitea_url).rstrip("/")
         self.user = settings.gitea_user
         self.token = settings.gitea_token
 
-    def api(self, path: str, data: dict | None = None, method: str = "GET") -> dict:
+    def api(self, path: str, data: dict | None = None, method: str = "GET") -> dict | list:
         req = urllib.request.Request(
             f"{self.base}/api/v1{path}",
             data=json.dumps(data).encode() if data is not None else None,
@@ -52,7 +54,9 @@ class Gitea:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 body = resp.read()
         except urllib.error.HTTPError as exc:
-            raise GiteaError(f"{method} {path} 失败：{exc.code} {exc.read().decode(errors='replace')}")
+            raise GiteaError(
+                f"{method} {path} 失败：{exc.code} {exc.read().decode(errors='replace')[:200]}"
+            )
         return json.loads(body) if body else {}
 
     def ensure_repo(self, name: str) -> dict:
@@ -83,41 +87,51 @@ class Gitea:
         last = "pending"
         while time.time() < deadline:
             data = self.api(f"/repos/{self.user}/{name}/commits/{sha}/status")
-            last = data.get("state") or "pending"
+            last = (data or {}).get("state") or "pending"
             if last in {"success", "failure", "error"}:
                 return last
             time.sleep(4)
         return f"timeout（最后状态 {last}）"
 
-    def latest_release(self, name: str) -> str | None:
+    def latest_release_asset(self, name: str) -> str | None:
         try:
             releases = self.api(f"/repos/{self.user}/{name}/releases")
         except GiteaError:
             return None
         if isinstance(releases, list) and releases:
             assets = releases[0].get("assets") or []
-            if assets:
-                return assets[0].get("browser_download_url")
-            return releases[0].get("html_url")
+            url = assets[0].get("browser_download_url") if assets else releases[0].get("html_url")
+            return url.replace(self.base, self.public) if url else None
         return None
 
 
-def publish(settings: Settings, workspace: Path, name: str, ui) -> PublishResult:
+def publish(
+    settings: Settings, workspace: Path, name: str, ui, deploy: str = "site"
+) -> PublishResult:
     gitea = Gitea(settings)
-    ui.stage("推送到 Gitea 并触发 CI")
+    ui.stage("推送到 Gitea，等 CI 部署")
     gitea.ensure_repo(name)
     sha = gitea.push(workspace, name)
-    repo_url = f"{gitea.base}/{gitea.user}/{name}"
+    repo_url = f"{gitea.public}/{gitea.user}/{name}"
     ui.info(f"已推送 {sha[:7]} → {repo_url}")
 
     status = gitea.wait_ci(name, sha)
     ui.check("CI", status == "success")
-    release = gitea.latest_release(name) if status == "success" else None
-    if release:
-        ui.info(f"制品：{release}")
+
+    site_url = release_url = None
+    if status == "success":
+        if deploy == "site":
+            site_url = f"{settings.pages_url}/{name}/"
+            ui.info(f"站点已上线：{site_url}")
+        else:
+            release_url = gitea.latest_release_asset(name)
+            if release_url:
+                ui.info(f"制品：{release_url}")
+
     return PublishResult(
         repo_url=repo_url,
         actions_url=f"{repo_url}/actions",
         status=status,
-        release_url=release,
+        site_url=site_url,
+        release_url=release_url,
     )

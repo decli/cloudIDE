@@ -1,2 +1,4 @@
 openai>=1.40,<3
 rich>=13,<15
+fastapi>=0.115,<1
+uvicorn>=0.30,<1

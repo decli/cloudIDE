@@ -1,0 +1,14 @@
+/* 占位样式，由 agent 替换。 */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.7;
+  color: #24252a;
+  background: #fbfbf9;
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem;
+}

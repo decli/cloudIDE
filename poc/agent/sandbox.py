@@ -36,6 +36,8 @@ class Sandbox:
     network: str = "none"
     memory: str = "2g"
     cpus: str = "2"
+    # 传给 docker -v 的源路径。编排服务在容器里跑时，这里必须是宿主机路径。
+    mount_source: Path | None = None
 
     def start(self) -> Sandbox:
         ensure_daemon()
@@ -52,7 +54,7 @@ class Sandbox:
                 "--memory", self.memory,
                 "--cpus", self.cpus,
                 "--pids-limit", "512",
-                "-v", f"{self.workspace}:/workspace",
+                "-v", f"{self.mount_source or self.workspace}:/workspace",
                 "-w", "/workspace",
                 self.image, "sleep", "infinity",
             ],

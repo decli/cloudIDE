@@ -16,10 +16,8 @@ from .config import Settings
 from .llm import LLM, BudgetExceeded
 from .loop import CodingAgent, TurnLimitExceeded
 from .sandbox import Sandbox
+from .templates import TEMPLATES, TemplateSpec
 from .tools import ToolBox
-
-# 这些路径 agent 不许改：验收测试、命令契约、CI 配置、lint 配置
-LOCKED = ("tests/acceptance/", "run.sh", "pyproject.toml", ".gitea/")
 
 # 只锁住已有文件还不够：新增一个优先级更高的配置文件同样能架空锁定配置，
 # 比如 ruff.toml 会盖掉 pyproject.toml，根目录的 conftest.py 能劫持验收测试的夹具。
@@ -28,44 +26,11 @@ CONFIG_TRAPS = {
     "conftest.py", ".editorconfig",
 }
 
-CHECKS = (("lint", "静态检查"), ("test", "单元测试"), ("acceptance", "验收测试"))
-
-TESTER_SYSTEM = """你是测试工程师，负责把用户需求翻译成可执行的验收测试。
-
-被测对象是一个 Python 命令行工具，入口为 `python -m app.cli`。
-
-写 pytest 测试，约束如下：
-- 只用标准库和 pytest，不要 import 被测项目的内部模块，只测命令行的外部行为。
-- 用 conftest 提供的 run_cli fixture 调用：result = run_cli("--help") 或 run_cli("add", "3", stdin="x")。
-  result 是 subprocess.CompletedProcess，可以断言 result.returncode、result.stdout、result.stderr。
-- 需要临时文件就用 pytest 的 tmp_path fixture。
-- 写 5 到 8 个测试函数，覆盖主要功能、一个边界情况、一个错误处理。
-- 断言要宽容：判断输出里是否包含关键内容，不要写死无关的格式、空格和标点。
-- 每个测试函数上面用一行中文注释写清它对应的验收标准。
-- 只输出一个 python 代码块，不要任何解释文字。"""
-
-CODER_SYSTEM = """你是一个编码 agent，在断网的 Docker 沙箱里完成一个 Python 命令行工具项目。
-
-环境：
-- 当前目录就是项目根目录，模板已经初始化好，先读 AGENTS.md 了解约定。
-- 沙箱没有网络，pip 装不了任何东西。只能用 Python 3.12 标准库；pytest 和 ruff 已经预装。
-- 用 run 工具执行命令，比如 ./run.sh lint、./run.sh test、./run.sh acceptance。
-
-规则：
-1. 源码写在 src/app/ 下，入口是 src/app/cli.py 里的 main(argv) -> int。
-2. tests/acceptance/ 是锁定的验收测试，不能改、也不要绕过。测试不通过就改源码。
-3. run.sh、pyproject.toml、.gitea/ 同样不能改。
-4. write_file 一次写一个完整文件，不要写省略号或代码片段。
-5. 每改一轮就自己跑 ./run.sh lint、./run.sh test、./run.sh acceptance，按报错继续修。
-6. 三项全绿后，用两三句话总结你做了什么，然后停止调用工具。
-
-风格：少说多做，直接调用工具，不要复述计划。"""
-
 
 def slugify(text: str, limit: int = 28) -> str:
     text = unicodedata.normalize("NFKD", text)
     ascii_only = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
-    return (ascii_only or "task")[:limit].strip("-") or "task"
+    return (ascii_only or "site")[:limit].strip("-") or "site"
 
 
 def extract_code(text: str) -> str:
@@ -98,16 +63,27 @@ class TaskResult:
     rounds: int = 0
     checks: dict[str, bool] = field(default_factory=dict)
     usage: str = ""
+    usd: float = 0.0
     blocked: str | None = None
     tampered: list[str] = field(default_factory=list)
     removed_configs: list[str] = field(default_factory=list)
 
 
 class Task:
-    def __init__(self, settings: Settings, requirement: str, name: str | None, ui) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        requirement: str,
+        name: str | None,
+        ui,
+        template: TemplateSpec | str | None = None,
+    ) -> None:
         self.settings = settings
         self.requirement = requirement.strip()
         self.ui = ui
+        if isinstance(template, str) or template is None:
+            template = TEMPLATES[template or settings.template]
+        self.spec = template
         stamp = datetime.now().strftime("%m%d-%H%M%S")
         self.slug = slugify(name or requirement)
         self.workspace = settings.workspaces / f"{self.slug}-{stamp}"
@@ -115,10 +91,17 @@ class Task:
         self.locked_snapshot: dict[str, tuple[str, bytes]] = {}
         self.initial_files: set[str] = set()
 
+    @property
+    def mount_source(self) -> Path:
+        """传给 docker -v 的路径。编排服务自己跑在容器里时，必须用宿主机上的路径。"""
+        if self.settings.workspaces_host:
+            return self.settings.workspaces_host / self.workspace.name
+        return self.workspace
+
     # --- 各阶段 ---
 
     def scaffold(self) -> None:
-        shutil.copytree(self.settings.templates / "python-cli", self.workspace)
+        shutil.copytree(self.settings.templates / self.spec.dir_name, self.workspace)
         (self.workspace / "REQUIREMENT.md").write_text(
             f"# 需求\n\n{self.requirement}\n", encoding="utf-8"
         )
@@ -129,7 +112,7 @@ class Task:
     def generate_acceptance(self) -> str:
         msg = self.llm.chat(
             [
-                {"role": "system", "content": TESTER_SYSTEM},
+                {"role": "system", "content": self.spec.tester_system},
                 {"role": "user", "content": f"用户需求：\n{self.requirement}"},
             ]
         )
@@ -148,7 +131,7 @@ class Task:
         ]
 
     def snapshot_locked(self) -> None:
-        for rel in LOCKED:
+        for rel in self.spec.locked:
             base = self.workspace / rel
             paths = sorted(base.rglob("*")) if base.is_dir() else [base]
             for path in paths:
@@ -156,6 +139,17 @@ class Task:
                     key = str(path.relative_to(self.workspace))
                     self.locked_snapshot[key] = (sha256(path), path.read_bytes())
         self.initial_files = {str(p.relative_to(self.workspace)) for p in self._files()}
+
+    def restore_tampered(self) -> list[str]:
+        """锁定文件被改就还原——run 工具能绕过 write_file 的限制，所以必须查。"""
+        tampered = []
+        for key, (digest, blob) in self.locked_snapshot.items():
+            path = self.workspace / key
+            if not path.exists() or sha256(path) != digest:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(blob)
+                tampered.append(key)
+        return tampered
 
     def sweep_config_traps(self) -> list[str]:
         """删掉 agent 新增的配置文件——它们能架空锁定的 lint / pytest 配置。"""
@@ -167,21 +161,10 @@ class Task:
                 removed.append(rel)
         return removed
 
-    def restore_tampered(self) -> list[str]:
-        """检查锁定文件有没有被改（run 工具可以绕过 write_file 的限制），改了就还原。"""
-        tampered = []
-        for key, (digest, blob) in self.locked_snapshot.items():
-            path = self.workspace / key
-            if not path.exists() or sha256(path) != digest:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(blob)
-                tampered.append(key)
-        return tampered
-
     def verify(self, sandbox: Sandbox) -> dict[str, tuple[bool, str]]:
         results: dict[str, tuple[bool, str]] = {}
-        for step, label in CHECKS:
-            code, out = sandbox.exec(f"./run.sh {step}", timeout=240)
+        for step, label in self.spec.checks:
+            code, out = sandbox.exec(f"./run.sh {step}", timeout=300)
             results[step] = (code == 0, out.strip())
             self.ui.check(label, code == 0)
         return results
@@ -201,27 +184,22 @@ class Task:
             name=f"cloudide-task-{self.slug}-{datetime.now().strftime('%H%M%S')}",
             workspace=self.workspace,
             image=self.settings.sandbox_image,
+            mount_source=self.mount_source,
         ).start()
         self.ui.info(f"沙箱已启动：{sandbox.name}（断网，内存 {sandbox.memory}）")
 
         toolbox = ToolBox(
             workspace=self.workspace,
             sandbox=sandbox,
-            locked=LOCKED,
+            locked=self.spec.locked,
             max_output=self.settings.max_tool_output,
             cmd_timeout=self.settings.cmd_timeout,
         )
-        agent = CodingAgent(self.llm, toolbox, CODER_SYSTEM, self.ui.event)
+        agent = CodingAgent(self.llm, toolbox, self.spec.coder_system, self.ui.event)
 
         result = TaskResult(ok=False, workspace=self.workspace)
         try:
-            first = (
-                f"需求：\n{self.requirement}\n\n"
-                f"验收测试 tests/acceptance/test_acceptance.py（只读）：\n"
-                f"```python\n{tests}\n```\n\n"
-                "请实现功能，让 lint、单元测试、验收测试全部通过。"
-            )
-            message = first
+            message = self.spec.first_message.format(requirement=self.requirement, tests=tests)
             for round_no in range(1, self.settings.max_repair_rounds + 2):
                 result.rounds = round_no
                 self.ui.stage(f"第 {round_no} 轮：编码")
@@ -234,7 +212,7 @@ class Task:
                     self.ui.warn(f"检测到锁定文件被修改，已还原：{', '.join(tampered)}")
                     notes.append(
                         f"你修改了锁定文件（{', '.join(tampered)}），已自动还原。"
-                        "验收测试和命令契约不可改，请改源码来满足它们。"
+                        "验收测试和命令契约不可改，请改实现来满足它们。"
                     )
                 traps = self.sweep_config_traps()
                 if traps:
@@ -251,15 +229,19 @@ class Task:
                 git(self.workspace, "add", "-A")
                 git(
                     self.workspace, "commit", "-q", "--allow-empty",
-                    "-m", f"feat: 第 {round_no} 轮实现（{sum(result.checks.values())}/3 通过）",
+                    "-m", f"feat: 第 {round_no} 轮实现"
+                          f"（{sum(result.checks.values())}/{len(self.spec.checks)} 通过）",
                 )
 
                 if all(result.checks.values()):
                     result.ok = True
                     break
 
-                failed = [f"### {label}\n{checks[step][1][-2500:]}" for step, label in CHECKS
-                          if not checks[step][0]]
+                failed = [
+                    f"### {label}\n{checks[step][1][-2500:]}"
+                    for step, label in self.spec.checks
+                    if not checks[step][0]
+                ]
                 extra = ("\n\n注意：" + " ".join(notes)) if notes else ""
                 message = (
                     "以下检查没有通过，请修复后再自测一遍：\n\n" + "\n\n".join(failed) + extra
@@ -272,6 +254,7 @@ class Task:
             result.blocked = "被用户中断"
         finally:
             result.usage = self.llm.usage.summary()
+            result.usd = round(self.llm.usage.usd, 4)
             self.write_meta(result)
             git(self.workspace, "add", "-A", check=False)
             git(self.workspace, "commit", "-q", "--allow-empty", "-m", "chore: 记录任务元数据",
@@ -285,6 +268,7 @@ class Task:
     def write_meta(self, result: TaskResult) -> None:
         meta = {
             "requirement": self.requirement,
+            "template": self.spec.key,
             "model": self.settings.model,
             "rounds": result.rounds,
             "checks": result.checks,
@@ -293,7 +277,7 @@ class Task:
             "tampered": result.tampered,
             "removed_configs": result.removed_configs,
             "usage": result.usage,
-            "usd": round(self.llm.usage.usd, 4),
+            "usd": result.usd,
             "finished_at": datetime.now().isoformat(timespec="seconds"),
         }
         meta_path = self.workspace / ".cloudide"

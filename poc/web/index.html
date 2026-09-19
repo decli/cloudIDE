@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cloudIDE</title>
+<style>
+:root {
+  --bg: #f7f7f5; --card: #fff; --line: #e4e3df; --text: #24252a; --dim: #76767c;
+  --accent: #3b5bdb; --ok: #2f8f5b; --bad: #c4443c; --warn: #b4690e;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text); line-height: 1.6;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+header { padding: 1.5rem 1.5rem 0; max-width: 1180px; margin: 0 auto; }
+header h1 { margin: 0; font-size: 1.3rem; font-weight: 600; }
+header p { margin: .25rem 0 0; color: var(--dim); font-size: .9rem; }
+.wrap {
+  max-width: 1180px; margin: 0 auto; padding: 1.25rem 1.5rem 3rem;
+  display: grid; grid-template-columns: 340px 1fr; gap: 1.25rem; align-items: start;
+}
+@media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+.card h2 { margin: 0 0 .75rem; font-size: .95rem; font-weight: 600; }
+textarea {
+  width: 100%; min-height: 110px; padding: .6rem; resize: vertical;
+  border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: .9rem;
+  background: #fcfcfb; color: inherit;
+}
+select, button { font: inherit; }
+select {
+  width: 100%; margin-top: .6rem; padding: .5rem; border: 1px solid var(--line);
+  border-radius: 8px; background: #fcfcfb; font-size: .88rem;
+}
+button.primary {
+  width: 100%; margin-top: .75rem; padding: .6rem; border: 0; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: .92rem; font-weight: 500; cursor: pointer;
+}
+button.primary:disabled { background: #a9b3d9; cursor: not-allowed; }
+.examples { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.examples button {
+  padding: .25rem .55rem; border: 1px solid var(--line); border-radius: 999px;
+  background: #fcfcfb; color: var(--dim); font-size: .78rem; cursor: pointer;
+}
+.jobs { margin-top: 1.25rem; }
+.job {
+  padding: .5rem .6rem; border: 1px solid var(--line); border-radius: 8px;
+  margin-bottom: .45rem; cursor: pointer; background: #fcfcfb; font-size: .84rem;
+}
+.job:hover { border-color: #cfcec9; }
+.job .meta { color: var(--dim); font-size: .76rem; display: flex; gap: .5rem; margin-top: .2rem; }
+.badge { padding: 0 .35rem; border-radius: 4px; font-size: .72rem; }
+.badge.running { background: #eef1fc; color: var(--accent); }
+.badge.done { background: #e9f4ee; color: var(--ok); }
+.badge.failed { background: #fbeceb; color: var(--bad); }
+#log {
+  font-family: var(--mono); font-size: .8rem; line-height: 1.55;
+  max-height: 62vh; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+}
+#log .stage { margin: .7rem 0 .3rem; font-weight: 600; color: var(--text); font-family: inherit; }
+#log .stage::before { content: "— "; color: var(--dim); }
+#log .say { color: var(--text); font-family: inherit; margin: .3rem 0; }
+#log .cmd { color: #6741b8; }
+#log .cmd::before { content: "$ "; }
+#log .out { color: var(--dim); }
+#log .file { color: var(--ok); }
+#log .info { color: var(--dim); }
+#log .warn { color: var(--warn); }
+#log .check.ok { color: var(--ok); }
+#log .check.bad { color: var(--bad); }
+#log details { margin: .3rem 0; }
+#log summary { cursor: pointer; color: var(--dim); }
+#log pre { margin: .3rem 0; padding: .5rem; background: #f4f4f1; border-radius: 6px; overflow-x: auto; }
+#result { margin-bottom: .9rem; display: none; }
+#result a.btn {
+  display: inline-block; padding: .45rem .9rem; border-radius: 8px; text-decoration: none;
+  font-size: .87rem; margin: 0 .5rem .5rem 0; border: 1px solid var(--line); color: var(--text);
+  background: #fcfcfb;
+}
+#result a.btn.go { background: var(--accent); color: #fff; border-color: var(--accent); }
+.empty { color: var(--dim); font-size: .85rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>cloudIDE</h1>
+  <p>写一句需求，大模型在容器里写代码、跑测试，CI 部署完就能直接打开看。</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>新建项目</h2>
+      <textarea id="req" placeholder="帮我做一个简单的个人博客，首页列出文章，有一个关于我的页面"></textarea>
+      <div class="examples">
+        <button data-fill="帮我做一个简单的个人博客，首页按时间列出文章，每篇文章有独立页面，另外有一个关于我的页面">个人博客</button>
+        <button data-fill="做一个咖啡店的单页官网，包含店铺介绍、菜单价格、营业时间和联系方式">店铺官网</button>
+        <button data-fill="做一个读书笔记站点，首页按书名分类列出笔记，每条笔记有独立页面和评分">读书笔记</button>
+      </div>
+      <select id="tpl"></select>
+      <button class="primary" id="go">开始</button>
+    </div>
+
+    <div class="card jobs">
+      <h2>历史任务</h2>
+      <div id="joblist"><div class="empty">还没有任务</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>进度</h2>
+    <div id="result"></div>
+    <div id="log"><div class="empty">左边写下需求，点开始。整个过程大约一两分钟。</div></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let es = null;
+
+async function loadTemplates() {
+  const list = await (await fetch("/api/templates")).json();
+  $("tpl").innerHTML = list.map(t => `<option value="${t.key}">${t.label}</option>`).join("");
+}
+
+async function loadJobs() {
+  const jobs = await (await fetch("/api/jobs")).json();
+  const box = $("joblist");
+  if (!jobs.length) { box.innerHTML = '<div class="empty">还没有任务</div>'; return; }
+  box.innerHTML = jobs.map(j => `
+    <div class="job" data-id="${j.id}">
+      <div>${escapeHtml(j.requirement).slice(0, 42)}</div>
+      <div class="meta">
+        <span class="badge ${j.status}">${statusText(j.status)}</span>
+        <span>${j.created_at.slice(5, 16)}</span>
+        <span>$${(j.usd || 0).toFixed(4)}</span>
+      </div>
+    </div>`).join("");
+  box.querySelectorAll(".job").forEach(el =>
+    el.onclick = () => openJob(el.dataset.id));
+}
+
+function statusText(s) {
+  return { running: "进行中", done: "已上线", failed: "失败" }[s] || s;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function addEvent(ev) {
+  const log = $("log");
+  if (log.querySelector(".empty")) log.innerHTML = "";
+  let html;
+  if (ev.kind === "code") {
+    html = `<details><summary>生成的验收测试（点开看）</summary><pre>${escapeHtml(ev.text)}</pre></details>`;
+  } else if (ev.kind === "check") {
+    html = `<div class="check ${ev.ok ? "ok" : "bad"}">${ev.ok ? "✓" : "✗"} ${escapeHtml(ev.text)}</div>`;
+  } else {
+    html = `<div class="${ev.kind}">${escapeHtml(ev.text)}</div>`;
+  }
+  log.insertAdjacentHTML("beforeend", html);
+  log.scrollTop = log.scrollHeight;
+}
+
+function showResult(job) {
+  const box = $("result");
+  if (job.status !== "done") {
+    box.style.display = "block";
+    box.innerHTML = `<div class="warn">任务未完成，看下面日志里的失败原因。</div>`;
+    return;
+  }
+  box.style.display = "block";
+  box.innerHTML = `
+    ${job.site_url ? `<a class="btn go" href="${job.site_url}" target="_blank">打开做好的站点 ↗</a>` : ""}
+    ${job.repo_url ? `<a class="btn" href="${job.repo_url}" target="_blank">代码仓库</a>` : ""}
+    ${job.ci_url ? `<a class="btn" href="${job.ci_url}" target="_blank">CI 记录</a>` : ""}
+    <div class="info">本次花费约 $${(job.usd || 0).toFixed(4)}</div>`;
+}
+
+function follow(id) {
+  if (es) es.close();
+  es = new EventSource(`/api/jobs/${id}/events`);
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.kind === "end") {
+      es.close(); es = null;
+      showResult(ev);
+      $("go").disabled = false;
+      $("go").textContent = "开始";
+      loadJobs();
+      return;
+    }
+    addEvent(ev);
+  };
+  es.onerror = () => { if (es) { es.close(); es = null; } $("go").disabled = false; };
+}
+
+async function openJob(id) {
+  const job = await (await fetch(`/api/jobs/${id}`)).json();
+  $("log").innerHTML = "";
+  job.events.forEach(addEvent);
+  $("result").style.display = "none";
+  if (job.status === "running") { follow(id); $("go").disabled = true; }
+  else showResult(job);
+}
+
+$("go").onclick = async () => {
+  const requirement = $("req").value.trim();
+  if (!requirement) { $("req").focus(); return; }
+  $("go").disabled = true;
+  $("go").textContent = "进行中…";
+  $("log").innerHTML = "";
+  $("result").style.display = "none";
+  const resp = await fetch("/api/jobs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requirement, template: $("tpl").value }),
+  });
+  if (!resp.ok) {
+    addEvent({ kind: "warn", text: "创建任务失败：" + await resp.text() });
+    $("go").disabled = false; $("go").textContent = "开始";
+    return;
+  }
+  const job = await resp.json();
+  loadJobs();
+  follow(job.id);
+};
+
+document.querySelectorAll(".examples button").forEach(b =>
+  b.onclick = () => { $("req").value = b.dataset.fill; });
+
+loadTemplates();
+loadJobs();
+setInterval(() => { if (!es) loadJobs(); }, 8000);
+</script>
+</body>
+</html>

@@ -15,7 +15,7 @@
 | [决策记录](docs/05-decisions.md) | 提议中的架构决策，以及需要拍板的问题 |
 | [POC 验证结果](docs/06-poc-findings.md) | 实测数据、暴露的问题、和方案的对照 |
 
-代码：[`poc/`](poc/) 是一个能跑的最小实现——一句话需求，自动写码、自测、推 Gitea、CI 出制品。怎么用见 [poc/README.md](poc/README.md)。
+代码：[`poc/`](poc/) 是一个能跑的最小实现——浏览器里写一句需求，大模型在容器里写代码、跑测试，CI 构建部署，点开链接就是做好的网站。怎么用见 [poc/README.md](poc/README.md)。
 
 ## 核心结论
 
